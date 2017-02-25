@@ -12,19 +12,21 @@
 static void
 free_contents(struct fsm *fsm)
 {
-	struct fsm_state *s;
 	struct fsm_state *next;
-	int i;
+	struct fsm_state *s;
 
 	assert(fsm != NULL);
 
 	for (s = fsm->sl; s != NULL; s = next) {
+		struct set_iter it;
+		struct fsm_edge *e;
 		next = s->next;
 
-		for (i = 0; i <= FSM_EDGE_MAX; i++) {
-			set_free(s->edges[i].sl);
+		for (e = set_first(s->edges, &it); e != NULL; e = set_next(&it)) {
+			set_free(e->sl);
 		}
 
+		set_free(s->edges);
 		free(s);
 	}
 }
@@ -76,11 +78,24 @@ fsm_move(struct fsm *dst, struct fsm *src)
 	free(src);
 }
 
+static int
+fsm_edge_cmp(const void *a, const void *b)
+{
+	const struct fsm_edge *ea, *eb;
+
+	assert(a != NULL);
+	assert(b != NULL);
+
+	ea = a;
+	eb = b;
+
+	return (ea->symbol > eb->symbol) - (ea->symbol < eb->symbol);
+}
+
 struct fsm_state *
 fsm_addstate(struct fsm *fsm)
 {
 	struct fsm_state *new;
-	int i;
 
 	assert(fsm != NULL);
 
@@ -89,12 +104,8 @@ fsm_addstate(struct fsm *fsm)
 		return NULL;
 	}
 
+	new->edges = set_create(fsm_edge_cmp);
 	new->end = 0;
-
-	for (i = 0; i <= FSM_EDGE_MAX; i++) {
-		new->edges[i].sl = NULL;
-	}
-
 	new->opaque = NULL;
 
 #ifdef DEBUG_TODFA
@@ -112,20 +123,22 @@ void
 fsm_removestate(struct fsm *fsm, struct fsm_state *state)
 {
 	struct fsm_state *s, **p;
-	int i;
+	struct fsm_edge *e;
+	struct set_iter it;
 
 	assert(fsm != NULL);
 	assert(state != NULL);
 
 	for (s = fsm->sl; s != NULL; s = s->next) {
-		for (i = 0; i <= FSM_EDGE_MAX; i++) {
-			set_remove(&s->edges[i].sl, state);
+		for (e = set_first(s->edges, &it); e != NULL; e = set_next(&it)) {
+			set_remove(&e->sl, state);
 		}
 	}
 
-	for (i = 0; i <= FSM_EDGE_MAX; i++) {
-		set_free(state->edges[i].sl);
+	for (e = set_first(state->edges, &it); e != NULL; e = set_next(&it)) {
+		set_free(e->sl);
 	}
+	set_free(state->edges);
 
 	if (fsm->start == state) {
 		fsm->start = NULL;

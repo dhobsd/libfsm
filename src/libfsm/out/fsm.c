@@ -71,37 +71,41 @@ escputc(int c, FILE *f)
 static const struct fsm_state *
 findany(const struct fsm_state *state)
 {
-	struct fsm_state *e, *f;
+	struct fsm_state *fst, *cst;
+	struct fsm_edge *e;
 	struct set_iter it;
-	int i;
 
 	assert(state != NULL);
 
-	f = set_first(state->edges[0].sl, &it);
+	e = set_first(state->edges, &it);
+	fst = set_first(e->sl, &it);
 
-	for (i = 0; i <= UCHAR_MAX; i++) {
-		if (set_empty(state->edges[i].sl)) {
+	for (e = set_first(state->edges, &it); e != NULL; e = set_next(&it)) {
+		if (e->symbol > UCHAR_MAX) {
+			break;
+		}
+
+		if (set_empty(e->sl)) {
 			return NULL;
 		}
 
-		for (e = set_first(state->edges[i].sl, &it); e != NULL; e = set_next(&it)) {
-			if (e != f) {
+		for (cst = set_first(e->sl, &it); cst != NULL; cst = set_next(&it)) {
+			if (cst != fst) {
 				return NULL;
 			}
 		}
 	}
 
-	assert(f != NULL);
+	assert(fst != NULL);
 
-	return f;
+	return fst;
 }
 
 void
 fsm_out_fsm(const struct fsm *fsm, FILE *f,
 	const struct fsm_outoptions *options)
 {
-	struct fsm_state *s, *e, *start;
-	struct set_iter it;
+	struct fsm_state *s, *start;
 	int end;
 
 	assert(fsm != NULL);
@@ -109,7 +113,8 @@ fsm_out_fsm(const struct fsm *fsm, FILE *f,
 	assert(options != NULL);
 
 	for (s = fsm->sl; s != NULL; s = s->next) {
-		int i;
+		struct fsm_edge *e;
+		struct set_iter it;
 
 		{
 			const struct fsm_state *a;
@@ -121,21 +126,23 @@ fsm_out_fsm(const struct fsm *fsm, FILE *f,
 			}
 		}
 
-		for (i = 0; i <= FSM_EDGE_MAX; i++) {
-			for (e = set_first(s->edges[i].sl, &it); e != NULL; e = set_next(&it)) {
-				assert(e != NULL);
+		for (e = set_first(s->edges, &it); e != NULL; e = set_next(&it)) {
+			struct fsm_state *st;
 
-				fprintf(f, "%-2u -> %2u", indexof(fsm, s), indexof(fsm, e));
+			for (st = set_first(e->sl, &it); st != NULL; st = set_next(&it)) {
+				assert(st != NULL);
+
+				fprintf(f, "%-2u -> %2u", indexof(fsm, s), indexof(fsm, st));
 
 				/* TODO: print " ?" if all edges are equal */
 
-				switch (i) {
+				switch (e->symbol) {
 				case FSM_EDGE_EPSILON:
 					break;
 
 				default:
 					fputs(" \"", f);
-					escputc(i, f);
+					escputc(e->symbol, f);
 					putc('\"', f);
 					break;
 				}
